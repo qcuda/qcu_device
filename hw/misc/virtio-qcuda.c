@@ -208,7 +208,9 @@ static void qcu_cudaRegisterFatBinary(VirtioQCArg *arg)
 	{
 		printf("creating context for device %d\n", i);
 		memset(&cudaDevices[i], 0, sizeof(cudaDev));
+		printf("about to get device %d\n", i);
 		cuError( cuDeviceGet(&cudaDevices[i].device, i) );
+		printf("about to create context for device %d\n", i);
 		cuError( cuCtxCreate(&cudaDevices[i].context, 0, cudaDevices[i].device) );
 		memset(&cudaDevices[i].cudaFunction, 0, sizeof(CUfunction) * cudaFunctionMaxNum);
 		cudaDevices[i].kernelsLoaded = 0;
@@ -247,6 +249,7 @@ static void qcu_cudaUnregisterFatBinary(VirtioQCArg *arg)
 		if( memcmp( &zeroedDevice, &cudaDevices[i], sizeof(cudaDev) ) != 0 )
 		{
 			// cudaError( cudaStreamDestroy(cudaDevices[i].stream) );
+			printf("about to destroy context of device %d\n", i);
 			cudaError( cuCtxDestroy(cudaDevices[i].context) );
 		}
 	}
@@ -340,6 +343,8 @@ static void qcu_cudaMalloc(VirtioQCArg *arg)
 	void* devPtr;
 	pfunc();
 
+	initializeDevice();
+
 	count = arg->flag;
 	cudaError((err = cudaMalloc( &devPtr, count )));
 	arg->cmd = err;
@@ -352,6 +357,8 @@ static void qcu_cudaMemset(VirtioQCArg *arg)
 {
 	cudaError_t err;
 	void* dst;
+
+	initializeDevice();
 
 	dst = (void*)arg->pA;
 	cudaError((err = cudaMemset(dst, arg->para, arg->pASize)));
@@ -368,6 +375,8 @@ static void qcu_cudaMemcpy(VirtioQCArg *arg)
 	uint64_t *gpa_array;
 
 	pfunc();
+
+	initializeDevice();
 
 	if( arg->flag == cudaMemcpyHostToDevice )
 	{
@@ -502,6 +511,7 @@ static void qcu_cudaMemcpyAsync(VirtioQCArg *arg)
 	uint32_t size;
 	void *ptr, *device;
 	cudaError_t err = 0;
+	initializeDevice();
 	//cudaStream_t stream = (cudaStream_t)arg->rnd;
 	uint64_t streamIdx = arg->rnd;
 	cudaStream_t stream = (streamIdx==(uint64_t)-1)?NULL:cudaStream[streamIdx];
@@ -683,6 +693,8 @@ static void qcu_cudaSetDevice(VirtioQCArg *arg)
 	int device;
 	pfunc();
 
+	initializeDevice();
+
 	device = (int)arg->pA;
 	cudaDeviceCurrent = device;
 
@@ -718,7 +730,7 @@ static void qcu_cudaDeviceSynchronize(VirtioQCArg *arg)
 
 static void qcu_cudaDeviceReset(VirtioQCArg *arg)
 {
-	cudaError_t err;
+	cudaError_t err = 0;
 	pfunc();
 	// should get rid of events for current device
 	cuCtxDestroy(cudaDevices[cudaDeviceCurrent].context);
@@ -1185,8 +1197,6 @@ static void virtio_qcuda_cmd_handle(VirtIODevice *vdev, VirtQueue *vq)
 {
 	VirtQueueElement elem;
 	VirtioQCArg *arg;
-
-	initializeDevice();
 
 	arg = malloc( sizeof(VirtioQCArg));
 	while( virtqueue_pop(vq, &elem) )
